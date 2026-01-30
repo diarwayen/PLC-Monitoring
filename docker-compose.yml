@@ -15,16 +15,17 @@ services:
     networks:
       - iiot-net
 
-  # EDGE / INTEGRATION
+# EDGE / INTEGRATION
   edge-node-red:
     image: nodered/node-red:3.1
     container_name: edge-node-red
     volumes:
       - node-red-data:/data
       - ./node-red/flows:/data/flows
+      - cfg-data:/data/config_db  # <-- BU SATIRI EKLE
     ports:
-      - "1880:1880"   # Node-RED UI
-      - "1881:1881"   # WebSocket
+      - "1880:1880"
+      - "1881:1881"
     depends_on:
       - sim-opcua-plc
       - data-influxdb

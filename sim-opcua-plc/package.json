@@ -1,13 +1,13 @@
 {
   "name": "sim-opcua-plc",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "PLC Simulator",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "dependencies": {
+    "node-opcua": "^2.115.0",
+    "chalk": "^4.1.2"
+  }
 }
