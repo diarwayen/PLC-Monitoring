@@ -1,0 +1,58 @@
+--------------------------------------------------------------------------------┬
+										|
+	1. PLC KATMANI	(node-opcua)						|
+										|
+		- Sensör verisi üret						|
+		- Veri toplar							|
+										|
+	Haberleşme:								|
+		- OPC UA							|
+										|
+--------------------------------------------------------------------------------┤
+										|
+	2. Edge, Integration Layer (Node-RED)					|
+										|
+		- PLC'den okur, protokol çevirir				├
+		- Veri normalization						|
+		- Threshold							|
+		- DB'ye yaz							|
+		- websocket (canlı izleme)					|
+										|
+	neden?									|
+		low-code, OT + IT ortak çalışır, OPC UA hazır node'lar		|
+										|
+--------------------------------------------------------------------------------┤
+										├
+	3.  VERİTABANI (InfluxDB)						|
+										|
+		- InfluxDB							|
+	neden?									|
+		- Time series için özel, hızlı					|
+										|
+--------------------------------------------------------------------------------┤
+										|
+	4. DASHBOARD (Grafana)							|
+										|
+		- Grafana							|
+										|
+--------------------------------------------------------------------------------┤
+										|
+	5. ADMIN DASHBOARD (Arayüz)						|
+										|
+		- SQLite							|
+		- React / Node.js						|
+										|
+--------------------------------------------------------------------------------┤
+										|
+	6. DOCKER								|
+										|
+		1. sim-opcua-plc						|
+		2. edge-node-red						|
+		3. data-influxdb						|
+		4. vis-grafana							|
+		5. admin-ui		React / Node.js				|
+		6. config-db		SQLite					|
+		7. vis-qt-client						|
+		8. ml-service							|
+										|
+--------------------------------------------------------------------------------┤
