@@ -1,0 +1,102 @@
+version: "3.9"
+
+services:
+
+  # PLC SIMULATOR (OPC UA)
+  sim-opcua-plc:
+    image: node:20-alpine
+    container_name: sim-opcua-plc
+    working_dir: /app
+    volumes:
+      - ./sim-opcua-plc:/app
+    command: sh -c "npm install && node server.js"
+    ports:
+      - "4840:4840"
+    networks:
+      - iiot-net
+
+  # EDGE / INTEGRATION
+  edge-node-red:
+    image: nodered/node-red:3.1
+    container_name: edge-node-red
+    volumes:
+      - node-red-data:/data
+      - ./node-red/flows:/data/flows
+    ports:
+      - "1880:1880"   # Node-RED UI
+      - "1881:1881"   # WebSocket
+    depends_on:
+      - sim-opcua-plc
+      - data-influxdb
+      - cfg-db
+    networks:
+      - iiot-net
+
+  # TIME-SERIES DATABASE
+  data-influxdb:
+    image: influxdb:2.7
+    container_name: data-influxdb
+    volumes:
+      - influx-data:/var/lib/influxdb2
+    environment:
+      - INFLUXDB_INIT_MODE=setup
+      - INFLUXDB_INIT_USERNAME=admin
+      - INFLUXDB_INIT_PASSWORD=admin123
+      - INFLUXDB_INIT_ORG=iiot
+      - INFLUXDB_INIT_BUCKET=machine_metrics
+    ports:
+      - "8086:8086"
+    networks:
+      - iiot-net
+
+  # DASHBOARD
+  viz-grafana:
+    image: grafana/grafana:10.2.3
+    container_name: viz-grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    depends_on:
+      - data-influxdb
+    networks:
+      - iiot-net
+
+  # CONFIG DATABASE (SQLite)
+  cfg-db:
+    image: nouchka/sqlite3
+    container_name: cfg-db
+    volumes:
+      - cfg-data:/data
+    networks:
+      - iiot-net
+
+  # ADMIN PANEL (Next.js)
+  cfg-admin-ui:
+    image: node:20-alpine
+    container_name: cfg-admin-ui
+    working_dir: /app
+    volumes:
+      - ./admin-ui:/app
+      - cfg-data:/data
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "8080:3000"
+    environment:
+      - CONFIG_DB_PATH=/data/config.db
+    depends_on:
+      - cfg-db
+    networks:
+      - iiot-net
+
+
+networks:
+  iiot-net:
+    driver: bridge
+
+volumes:
+  node-red-data:
+  influx-data:
+  grafana-data:
+  cfg-data:
