@@ -1,4 +1,4 @@
-import { openDb } from './db';
+import { openDb } from './db.js';
 
 export default async function handler(req, res) {
   const db = await openDb();

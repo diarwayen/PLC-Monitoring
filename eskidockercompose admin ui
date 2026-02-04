@@ -1,0 +1,19 @@
+  # 6. ADMIN PANEL 
+  cfg-admin-ui:
+    image: node:20-alpine
+    build: ./admin-ui
+    container_name: cfg-admin-ui
+    working_dir: /app
+    volumes:
+      - ./admin-ui:/app
+      - cfg-data:/data
+      - /app/node_modules # <--- KORUMA KALKANI 2: Windows sqlite3'ü Docker'ı bozmasın
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "8080:3000"
+    environment:
+      - CONFIG_DB_PATH=/data/config.db
+    depends_on:
+      - cfg-db
+    networks:
+      - iiot-net
