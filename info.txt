@@ -1,0 +1,540 @@
+🏭 Proje Özeti: PLC Monitoring System (IIoT Dashboard)
+Amacımız: Endüstriyel bir makineden (PLC) gelen sensör verilerini (Sıcaklık, Titreşim) okuyup, bunları bir veritabanına kaydetmek ve bir dashboard üzerinde görselleştirmek.
+
+Bileşenler ve Görevleri:
+
+Admin UI (Next.js):
+
+Görevi: Burası sistemin "Kontrol Paneli".
+
+Ne Oluşturuyor?: Burada oluşturulan şey bir "PLC Hesabı" değil, bir "İzleme Kaydı" (Monitoring Configuration).
+
+İşlevi: Kullanıcı buraya girip "Benim fabrikamda 'CNC-01' adında bir makine var, adresi de opc.tcp://..." diyor. Bu bilgi veritabanına (SQLite) kaydediliyor. Yani sisteme hangi makineyi dinlemesi gerektiğini söylüyoruz.
+
+SQLite (Veritabanı 1 - Konfigürasyon):
+
+Görevi: Sistemin "Telefon Rehberi".
+
+Neden Var?: Makinelerin isimlerini, tiplerini ve endpoint adreslerini tutar. Sensör verisi (sıcaklık vb.) burada tutulmaz. Sadece ayarlar ve tanımlar burada durur. Admin UI buraya yazar, Node-RED buradan okur.
+
+Simülasyon PLC (Node.js OPC UA Server):
+
+Görevi: Gerçek bir fabrika makinesini taklit eder.
+
+Veri: Rastgele sıcaklık (ns=1;i=1001) ve titreşim verisi üretir.
+
+Node-RED (Middleware - Beyin):
+
+Görevi: Sistemin "Tercümanı ve Postacısı".
+
+Akış:
+
+SQLite'a bakar: "Hangi makineleri izlemem gerekiyor?"
+
+PLC'ye gider: "Bana şu adresteki sıcaklığı ver." (OPC UA Protokolü ile).
+
+Veriyi alır, düzenler.
+
+InfluxDB'ye yazar: "Bu veriyi arşivle."
+
+InfluxDB (Veritabanı 2 - Zaman Serisi):
+
+Görevi: Sistemin "Kara Kutusu / Kayıt Cihazı".
+
+Neden SQLite değil?: Çünkü sensör verileri zamana bağlıdır (Time-Series) ve çok hızlı akar (saniyede bir veya daha sık). SQLite bu kadar hızlı yazma işlemi için uygun değildir. InfluxDB, "Saat 14:00:01'de sıcaklık 23 dereceydi" bilgisini tutmak için optimize edilmiştir.
+
+Grafana:
+
+Görevi: Sistemin "Ekranı".
+
+InfluxDB'ye bağlanır ve oradaki sayısal verileri çizgi grafiğe dönüştürür.
+
+
+Dosyalar şöyle:
+
+admin-ui
+
+index.js
+-"import { useState, useEffect } from 'react';
+
+export default function Home() {
+  const [machines, setMachines] = useState([]);
+  const [formData, setFormData] = useState({ name: '', endpoint: 'opc.tcp://sim-opcua-plc:4840', type: 'CNC' });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchMachines();
+  }, []);
+
+  const fetchMachines = async () => {
+    const res = await fetch('/api/machines');
+    const data = await res.json();
+    setMachines(data);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await fetch('/api/machines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      // Formu sıfırla ama endpoint'i kolaylık olsun diye tut
+      setFormData({ ...formData, name: '' }); 
+      fetchMachines();
+    } catch (err) {
+      alert("Ekleme başarısız oldu.");
+    }
+    setLoading(false);
+  };
+
+  const handleDelete = async (id) => {
+    if(!confirm("Bu makineyi silmek istediğinize emin misiniz?")) return;
+
+    try {
+      await fetch('/api/machines', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      fetchMachines();
+    } catch (err) {
+      alert("Silme işlemi başarısız.");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans">
+      {/* Üst Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200 py-4 px-6 mb-8">
+        <div className="max-w-6xl mx-auto flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-blue-900 flex items-center gap-2">
+            🏭 PLC Monitoring <span className="text-gray-400 font-normal text-sm">| Admin Paneli</span>
+          </h1>
+          <div className="text-sm text-gray-500">
+            Sistem Durumu: <span className="text-green-600 font-semibold">Online</span>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* SOL KOLON: Ekleme Formu */}
+        <div className="lg:col-span-1">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 sticky top-6">
+            <h2 className="text-lg font-semibold mb-4 text-gray-700 flex items-center gap-2">
+              ➕ Yeni Makine Ekle
+            </h2>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Makine Adı</label>
+                <input 
+                  type="text" 
+                  className="border border-gray-300 p-2 rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none transition" 
+                  placeholder="Örn: CNC-01"
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Makine Tipi</label>
+                <select 
+                  className="border border-gray-300 p-2 rounded-lg w-full bg-white"
+                  value={formData.type}
+                  onChange={(e) => setFormData({...formData, type: e.target.value})}
+                >
+                  <option value="CNC">CNC Tezgahı</option>
+                  <option value="Robot">Robot Kol</option>
+                  <option value="Pres">Hidrolik Pres</option>
+                  <option value="Paketleme">Paketleme Hattı</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">OPC UA Adresi</label>
+                <input 
+                  type="text" 
+                  className="border border-gray-300 p-2 rounded-lg w-full text-sm font-mono text-gray-600 bg-gray-50" 
+                  value={formData.endpoint}
+                  onChange={(e) => setFormData({...formData, endpoint: e.target.value})}
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={loading}
+                className="bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition shadow-lg shadow-blue-200 disabled:opacity-50 mt-2"
+              >
+                {loading ? 'Ekleniyor...' : 'Sisteme Ekle'}
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {/* SAĞ KOLON: Liste */}
+        <div className="lg:col-span-2">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-700">Mevcut Makineler ({machines.length})</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {machines.map((m) => (
+              <div key={m.id} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition group relative">
+                
+                {/* Silme Butonu (Sağ Üst) */}
+                <button 
+                  onClick={() => handleDelete(m.id)}
+                  className="absolute top-4 right-4 text-gray-300 hover:text-red-500 transition p-1"
+                  title="Makineyi Sil"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm
+                    ${m.type === 'CNC' ? 'bg-orange-500' : 
+                      m.type === 'Robot' ? 'bg-purple-500' : 'bg-blue-500'}`}>
+                    {m.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-800">{m.name}</h3>
+                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded border border-gray-200">
+                      {m.type}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="bg-gray-50 p-2 rounded border border-gray-100 mb-3">
+                  <p className="text-xs text-gray-400 font-bold uppercase mb-1">Endpoint</p>
+                  <p className="text-xs font-mono text-gray-600 break-all">{m.endpoint}</p>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs font-medium text-green-600 bg-green-50 px-3 py-1.5 rounded-full w-fit">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  </span>
+                  Veri Akışı Bekleniyor
+                </div>
+              </div>
+            ))}
+            
+            {machines.length === 0 && (
+              <div className="col-span-2 py-12 text-center text-gray-400 bg-white rounded-xl border border-dashed border-gray-300">
+                <p className="text-lg">Henüz kayıtlı makine yok.</p>
+                <p className="text-sm">Sol taraftaki formdan yeni bir tane ekleyin.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}"
+machines.js:
+"
+// admin-ui/pages/api/machines.js
+import db from '../../lib/db';
+
+export default function handler(req, res) {
+  if (req.method === 'GET') {
+    // Tüm makineleri listele
+    db.all("SELECT * FROM machines ORDER BY id DESC", [], (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.status(200).json(rows);
+    });
+  } 
+  else if (req.method === 'POST') {
+    // Yeni makine ekle
+    const { name, endpoint, type } = req.body;
+    
+    // Basit validasyon
+    if (!name || !endpoint) {
+        res.status(400).json({ error: "İsim ve Endpoint zorunludur." });
+        return;
+    }
+
+    const sql = "INSERT INTO machines (name, endpoint, type) VALUES (?, ?, ?)";
+    const params = [name, endpoint, type || 'Genel'];
+    
+    db.run(sql, params, function(err) {
+      if (err) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      res.status(201).json({ id: this.lastID, name, endpoint, type });
+    });
+  } 
+  else if (req.method === 'DELETE') {
+    // Makine sil
+    const { id } = req.body;
+
+    if (!id) {
+        res.status(400).json({ error: "Silinecek ID belirtilmedi." });
+        return;
+    }
+
+    const sql = "DELETE FROM machines WHERE id = ?";
+    db.run(sql, [id], function(err) {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        res.status(200).json({ message: "Silindi", id });
+    });
+  } 
+  else {
+    res.status(405).end(); // Method Not Allowed
+  }
+}
+"
+
+
+Ve simülasyon için
+
+sim-opcua-plc
+server.js:
+"
+/* * Basit OPC UA Simülatörü 
+ * Amaç: Node-RED'in okuması için sahte sensör verisi üretmek.
+ */
+
+const opcua = require("node-opcua");
+const chalk = require("chalk"); // Konsol renkleri için
+
+const port = 4840;
+
+async function main() {
+    try {
+        // 1. Server Oluşturma
+        const server = new opcua.OPCUAServer({
+            port: port,
+            resourcePath: "/UA/Simulation",
+            buildInfo: {
+                productName: "SimulatedPLC",
+                buildNumber: "1",
+                buildDate: new Date()
+            }
+        });
+
+        await server.initialize();
+        console.log(chalk.yellow("OPC UA Server başlatılıyor..."));
+
+        const addressSpace = server.engine.addressSpace;
+        const namespace = addressSpace.getOwnNamespace();
+
+        // 2. Cihaz Tanımlama (Örn: Bir CNC Makinesi)
+        const device = namespace.addObject({
+            organizedBy: addressSpace.rootFolder.objects,
+            browseName: "Machine_01"
+        });
+
+        // 3. Değişkenleri Tanımlama (Simüle edilecek veriler)
+
+        // Değişken 1: Sıcaklık (Temperature)
+        let temperature = 20.0;
+
+        // Değişkeni writable + settable yap
+        const tempNode = namespace.addVariable({
+            componentOf: device,
+            browseName: "Temperature",
+            dataType: "Double",
+            value: new opcua.Variant({
+                dataType: opcua.DataType.Double,
+                value: temperature
+            })
+        });
+
+        // ⬇️ KRİTİK KISIM ⬇️
+        // Server tarafında periyodik olarak değeri GÜNCELLE
+        setInterval(() => {
+            const change = (Math.random() - 0.5) * 2.0;
+            temperature += change;
+
+            if (temperature < 15) temperature = 15;
+            if (temperature > 100) temperature = 100;
+
+            tempNode.setValueFromSource(
+                new opcua.Variant({
+                    dataType: opcua.DataType.Double,
+                    value: temperature
+                }),
+                opcua.StatusCodes.Good
+            );
+
+        }, 1000); // 1 saniyede bir değişim
+
+
+        // !!! İŞTE SİHİRLİ SATIR !!!
+        console.log(chalk.magenta("--------------------------------------------------"));
+        console.log(chalk.magenta("Gizli NodeID Bulundu: ") + chalk.yellow(tempNode.nodeId.toString()));
+        console.log(chalk.magenta("--------------------------------------------------"));
+
+        // Değişken 2: Titreşim (Vibration)
+        let angle = 0;
+        const vibrationNode = namespace.addVariable({
+            componentOf: device,
+            browseName: "Vibration",
+            dataType: "Double",
+            value: {
+                get: function () {
+                    angle += 0.1;
+                    const vibration = 2.0 + Math.sin(angle) * 1.5;
+                    return new opcua.Variant({
+                        dataType: opcua.DataType.Double,
+                        value: vibration
+                    });
+                }
+            }
+        });
+        
+        console.log(
+          "Vibration NodeID:",
+          vibrationNode.nodeId.toString()
+        );
+        
+
+        // Değişken 3: Makine Durumu (IsActive) - Boolean
+        namespace.addVariable({
+            componentOf: device,
+            browseName: "IsActive",
+            dataType: "Boolean",
+            value: {
+                get: function () {
+                    return new opcua.Variant({ dataType: opcua.DataType.Boolean, value: true });
+                }
+            }
+        });
+
+        // 4. Server'ı Başlat
+        await server.start();
+        console.log(chalk.green(`Server başlatıldı!`));
+        console.log(`Endpoint: ${chalk.cyan(server.getEndpointUrl())}`);
+        console.log("Ctrl+C ile durdurabilirsiniz.");
+
+    } catch (err) {
+        console.log(chalk.red("Server başlatılamadı:"), err);
+    }
+}
+
+main();
+"
+
+docker-compose.yml:
+"
+version: "3.9"
+
+services:
+  # 1. PLC SIMULATOR (OPC UA)
+  sim-opcua-plc:
+    image: node:20-alpine
+    container_name: sim-opcua-plc
+    working_dir: /app
+    volumes:
+      - ./sim-opcua-plc:/app
+      - /app/node_modules  # <--- KORUMA KALKANI 1: Windows modüllerini yoksayar
+    # BT ekibi sertifikayı çözünce bu komut Linux uyumlu yükleme yapacak
+    command: sh -c "npm install && node server.js"
+    ports:
+      - "4840:4840"
+    networks:
+      - iiot-net
+
+# 2. EDGE / INTEGRATION (Node-RED)
+  edge-node-red:
+    image: nodered/node-red:latest  # <--- GÜNCELLEME 1: Sürümü yükselttik (v18/v20)
+    container_name: edge-node-red
+    volumes:
+      - ./node-red/data:/data       # <--- GÜNCELLEME 2: Yerel klasörü bağladık
+      # - node-red-data:/data       # <--- ESKİ SATIRI SİL VEYA YORUMLA
+      - cfg-data:/data/config_db
+    ports:
+      - "1880:1880"
+      - "1881:1881"
+    depends_on:
+      - sim-opcua-plc
+      - data-influxdb
+      - cfg-db
+    networks:
+      - iiot-net
+
+  # 3. TIME-SERIES DB (InfluxDB)
+  data-influxdb:
+    image: influxdb:2.7
+    container_name: data-influxdb
+    volumes:
+      - influx-data:/var/lib/influxdb2
+    environment:
+      - INFLUXDB_INIT_MODE=setup
+      - INFLUXDB_INIT_USERNAME=admin
+      - INFLUXDB_INIT_PASSWORD=admin123
+      - INFLUXDB_INIT_ORG=iiot
+      - INFLUXDB_INIT_BUCKET=machine_metrics
+    ports:
+      - "8086:8086"
+    networks:
+      - iiot-net
+
+  # 4. DASHBOARD (Grafana)
+  viz-grafana:
+    image: grafana/grafana:10.2.3
+    container_name: viz-grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3001:3000"
+    depends_on:
+      - data-influxdb
+    networks:
+      - iiot-net
+
+  # 5. CONFIG DB (SQLite)
+  cfg-db:
+    image: nouchka/sqlite3
+    container_name: cfg-db
+    volumes:
+      - cfg-data:/data
+    networks:
+      - iiot-net
+
+  # 6. ADMIN PANEL (Next.js)
+  cfg-admin-ui:
+    image: node:20-alpine
+    container_name: cfg-admin-ui
+    working_dir: /app
+    volumes:
+      - ./admin-ui:/app
+      - cfg-data:/data
+      - /app/node_modules # <--- KORUMA KALKANI 2: Windows sqlite3'ü Docker'ı bozmasın
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "8080:3000"
+    environment:
+      - CONFIG_DB_PATH=/data/config.db
+    depends_on:
+      - cfg-db
+    networks:
+      - iiot-net
+
+networks:
+  iiot-net:
+    driver: bridge
+
+volumes:
+  node-red-data:
+  influx-data:
+  grafana-data:
+  cfg-data:
+"
+

@@ -1,30 +1,32 @@
-// admin-ui/pages/api/machines.js
-import db from '../../lib/db';
+import { openDb } from './db';
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
+  const db = await openDb();
+
   if (req.method === 'GET') {
-    // Tüm makineleri listele
-    db.all("SELECT * FROM machines", [], (err, rows) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.status(200).json(rows);
-    });
-  } else if (req.method === 'POST') {
-    // Yeni makine ekle
-    const { name, endpoint, type } = req.body;
-    const sql = "INSERT INTO machines (name, endpoint, type) VALUES (?, ?, ?)";
-    const params = [name, endpoint, type];
-    
-    db.run(sql, params, function(err) {
-      if (err) {
-        res.status(400).json({ error: err.message });
-        return;
-      }
-      res.status(201).json({ id: this.lastID, name, endpoint });
-    });
-  } else {
-    res.status(405).end(); // Method Not Allowed
+    const machines = await db.all('SELECT * FROM machines');
+    res.status(200).json(machines);
+  } 
+  else if (req.method === 'POST') {
+    const { name, type, endpoint } = req.body;
+    const result = await db.run(
+      'INSERT INTO machines (name, type, endpoint) VALUES (?, ?, ?)',
+      [name, type, endpoint]
+    );
+    const newMachine = await db.get('SELECT * FROM machines WHERE id = ?', result.lastID);
+    res.status(201).json(newMachine);
+  } 
+  else if (req.method === 'PUT') { // <--- YENİ EKLENDİ
+    const { id, name, type, endpoint } = req.body;
+    await db.run(
+      'UPDATE machines SET name = ?, type = ?, endpoint = ? WHERE id = ?',
+      [name, type, endpoint, id]
+    );
+    res.status(200).json({ message: 'Güncellendi' });
+  }
+  else if (req.method === 'DELETE') {
+    const { id } = req.query;
+    await db.run('DELETE FROM machines WHERE id = ?', id);
+    res.status(200).json({ message: 'Silindi' });
   }
 }

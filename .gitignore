@@ -1,0 +1,90 @@
+####################################
+# GLOBAL / OS
+####################################
+.DS_Store
+Thumbs.db
+*.swp
+*.log
+
+####################################
+# NODE.JS (Genel)
+####################################
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+####################################
+# ENV / SECRETS
+####################################
+.env
+.env.*
+!.env.example
+
+####################################
+# BUILD / DIST
+####################################
+dist/
+build/
+out/
+.next/
+coverage/
+
+####################################
+# DOCKER
+####################################
+**/node_modules
+**/.npm
+**/.cache
+
+####################################
+# NODE-RED
+####################################
+node-red/data/node_modules/
+node-red/data/.config.json
+node-red/data/.sessions.json
+node-red/data/context/
+node-red/data/flows_*.json.backup
+node-red/data/flows_*.cred.json
+
+####################################
+# GRAFANA
+####################################
+grafana/data/
+grafana/plugins/
+grafana/log/
+
+####################################
+# INFLUXDB
+####################################
+influx-data/
+influxdb/data/
+influxdb/wal/
+
+####################################
+# SQLITE / CONFIG DB
+####################################
+*.db
+*.db-journal
+cfg-data/
+
+####################################
+# ADMIN UI (Next.js)
+####################################
+admin-ui/node_modules/
+admin-ui/.next/
+admin-ui/out/
+admin-ui/.env.local
+
+####################################
+# OPC UA SIMULATOR
+####################################
+sim-opcua-plc/node_modules/
+
+####################################
+# IDE / EDITOR
+####################################
+.vscode/
+.idea/
+*.iml

@@ -33,40 +33,69 @@ async function main() {
         });
 
         // 3. Değişkenleri Tanımlama (Simüle edilecek veriler)
-        
-        // Değişken 1: Sıcaklık (Temperature) - Double
+
+        // Değişken 1: Sıcaklık (Temperature)
         let temperature = 20.0;
-        namespace.addVariable({
+
+        // Değişkeni writable + settable yap
+        const tempNode = namespace.addVariable({
             componentOf: device,
             browseName: "Temperature",
             dataType: "Double",
-            value: {
-                get: function () {
-                    // Simülasyon: Sıcaklığı rastgele biraz artır/azalt
-                    const change = (Math.random() - 0.5) * 2.0; 
-                    temperature += change;
-                    if (temperature < 15) temperature = 15;
-                    if (temperature > 100) temperature = 100;
-                    return new opcua.Variant({ dataType: opcua.DataType.Double, value: temperature });
-                }
-            }
+            value: new opcua.Variant({
+                dataType: opcua.DataType.Double,
+                value: temperature
+            })
         });
 
-        // Değişken 2: Titreşim (Vibration) - Double
-        // Sinüs dalgası şeklinde değişsin
+        // ⬇️ KRİTİK KISIM ⬇️
+        // Server tarafında periyodik olarak değeri GÜNCELLE
+        setInterval(() => {
+            const change = (Math.random() - 0.5) * 2.0;
+            temperature += change;
+
+            if (temperature < 15) temperature = 15;
+            if (temperature > 100) temperature = 100;
+
+            tempNode.setValueFromSource(
+                new opcua.Variant({
+                    dataType: opcua.DataType.Double,
+                    value: temperature
+                }),
+                opcua.StatusCodes.Good
+            );
+
+        }, 1000); // 1 saniyede bir değişim
+
+
+        // !!! İŞTE SİHİRLİ SATIR !!!
+        console.log(chalk.magenta("--------------------------------------------------"));
+        console.log(chalk.magenta("Gizli NodeID Bulundu: ") + chalk.yellow(tempNode.nodeId.toString()));
+        console.log(chalk.magenta("--------------------------------------------------"));
+
+        // Değişken 2: Titreşim (Vibration)
         let angle = 0;
-        namespace.addVariable({
+        const vibrationNode = namespace.addVariable({
             componentOf: device,
             browseName: "Vibration",
             dataType: "Double",
             value: {
                 get: function () {
                     angle += 0.1;
-                    const vibration = 2.0 + Math.sin(angle) * 1.5; // 0.5 ile 3.5 arası gezer
-                    return new opcua.Variant({ dataType: opcua.DataType.Double, value: vibration });
+                    const vibration = 2.0 + Math.sin(angle) * 1.5;
+                    return new opcua.Variant({
+                        dataType: opcua.DataType.Double,
+                        value: vibration
+                    });
                 }
             }
         });
+        
+        console.log(
+          "Vibration NodeID:",
+          vibrationNode.nodeId.toString()
+        );
+        
 
         // Değişken 3: Makine Durumu (IsActive) - Boolean
         namespace.addVariable({

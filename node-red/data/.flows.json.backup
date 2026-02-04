@@ -1,0 +1,215 @@
+[
+    {
+        "id": "c0cb6e72e8b7a73c",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "78c1225f88c6ed44",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "f6f2187d.f17ca8",
+        "type": "tab",
+        "label": "Yedek - Statik Sistem",
+        "disabled": false,
+        "info": "Bu akış, veritabanı bağlantısı olmadan çalışan eski manuel yöntemdir."
+    },
+    {
+        "id": "913c365217f5f03c",
+        "type": "OpcUa-Endpoint",
+        "name": "",
+        "endpoint": "opc.tcp://sim-opcua-plc:4840/UA/Simulation",
+        "secpol": "None",
+        "secmode": "None",
+        "none": true,
+        "login": false,
+        "usercert": false,
+        "usercertificate": "",
+        "userprivatekey": ""
+    },
+    {
+        "id": "influx_config_node",
+        "type": "influxdb",
+        "hostname": "influxdb",
+        "port": "8086",
+        "protocol": "http",
+        "database": "database",
+        "name": "InfluxDB",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "2.0",
+        "url": "http://data-influxdb:8086",
+        "rejectUnauthorized": true
+    },
+    {
+        "id": "influx_conf",
+        "type": "influxdb",
+        "hostname": "influxdb",
+        "port": "8086",
+        "protocol": "http",
+        "database": "factory",
+        "name": "Local Influx",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "1.x",
+        "url": "http://influxdb:8086",
+        "rejectUnauthorized": true
+    },
+    {
+        "id": "3bd74ad649311f40",
+        "type": "inject",
+        "z": "78c1225f88c6ed44",
+        "name": "Inject Node",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "ns=1;i=1001",
+        "payload": "",
+        "payloadType": "date",
+        "x": 150,
+        "y": 100,
+        "wires": [
+            [
+                "54cfebcbbcdc6163"
+            ]
+        ]
+    },
+    {
+        "id": "54cfebcbbcdc6163",
+        "type": "OpcUa-Client",
+        "z": "78c1225f88c6ed44",
+        "endpoint": "913c365217f5f03c",
+        "action": "subscribe",
+        "deadbandtype": "a",
+        "deadbandvalue": "0",
+        "time": "1000",
+        "timeUnit": "ms",
+        "certificate": "n",
+        "localfile": "",
+        "localkeyfile": "",
+        "securitymode": "None",
+        "securitypolicy": "None",
+        "useTransport": false,
+        "maxChunkCount": 1,
+        "maxMessageSize": 8192,
+        "receiveBufferSize": 8192,
+        "sendBufferSize": 8192,
+        "setstatusandtime": false,
+        "keepsessionalive": false,
+        "name": "OpcUa-Client",
+        "applicationName": "",
+        "applicationUri": "",
+        "x": 360,
+        "y": 140,
+        "wires": [
+            [
+                "aa70dd615039f4fa"
+            ],
+            [],
+            []
+        ]
+    },
+    {
+        "id": "6001e61dfc3c7895",
+        "type": "debug",
+        "z": "78c1225f88c6ed44",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 800,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "aa70dd615039f4fa",
+        "type": "function",
+        "z": "78c1225f88c6ed44",
+        "name": "ınflux için formatlama",
+        "func": "// Gelen veriyi güvenli bir şekilde al\nvar value = msg.payload.value ? msg.payload.value.value : msg.payload;\nvar nodeId = msg.topic || \"\"; // Hata almamak için boş string önlemi\n\n// Hangi veri geldi? (Mapping)\nvar fieldName = \"value\"; // Varsayılan\nif (nodeId.includes(\"1001\")) fieldName = \"temperature\";\nelse if (nodeId.includes(\"1002\")) fieldName = \"vibration\";\n\n// --- TEMİZLİK ---\n// InfluxDB düğümünün kafasını karıştıran her şeyi siliyoruz\ndelete msg.topic; \ndelete msg.statusCode;\ndelete msg.serverTimestamp;\ndelete msg.sourceTimestamp;\ndelete msg._msgid;\n\n// --- BASİT FORMAT (Eski Çalışan Yöntem) ---\n// Karmaşık dizi ([...]) yerine basit obje ({...}) kullanıyoruz.\nmsg.payload = {};\nmsg.payload[fieldName] = value;\n\n// Örn: msg.payload = { temperature: 24.5 }\n\n// --- ETİKET (TAG) ---\n// Node-RED InfluxDB düğümü, etiketleri \"msg.tags\" içinde bekler (Payload içinde değil)\nmsg.tags = {\n    machine: \"Sim_CNC_01\",\n    location: \"Fabrika_A\"\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 600,
+        "y": 100,
+        "wires": [
+            [
+                "6001e61dfc3c7895",
+                "7a61673ac77742a5"
+            ]
+        ]
+    },
+    {
+        "id": "7a61673ac77742a5",
+        "type": "influxdb out",
+        "z": "78c1225f88c6ed44",
+        "influxdb": "influx_config_node",
+        "name": "Db yaz",
+        "measurement": "machine_metrics",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "database",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "iiot",
+        "bucket": "machine_metrics",
+        "x": 800,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "4210190d4bd4e69a",
+        "type": "inject",
+        "z": "78c1225f88c6ed44",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "0.2",
+        "topic": "ns=1;i=1002",
+        "payload": "",
+        "payloadType": "date",
+        "x": 170,
+        "y": 180,
+        "wires": [
+            [
+                "54cfebcbbcdc6163"
+            ]
+        ]
+    }
+]
