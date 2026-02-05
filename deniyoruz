@@ -1,0 +1,57 @@
+// 1. Gelen veriyi temizle
+var value = msg.payload;
+if (value && typeof value === 'object' && value.value !== undefined) {
+    value = value.value;
+}
+
+// Boolean dönüşümü
+if (typeof value === 'boolean') {
+    value = value ? 1 : 0;
+}
+
+// 2. Hafızadan bilgi al
+var config = global.get('systemConfig');
+var ep = msg.endpoint;
+var nid = msg.topic;
+
+if (!config || !config[ep] || !config[ep][nid]) {
+    node.warn("Tanımsız veri: " + nid);
+    return null;
+}
+
+var info = config[ep][nid];
+
+// 3. Parametre ismini belirle (temiz field adı)
+var paramName = info.field || "unknown_parameter";
+// Türkçe karakterleri temizle ve küçük harfe çevir
+paramName = paramName.toLowerCase()
+    .replace(/ı/g, 'i')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/\s+/g, '_'); // Boşlukları _ yap
+
+// 4. TEMİZLİK - InfluxDB kafasını karıştıran şeyleri sil
+delete msg.topic;
+delete msg.statusCode;
+delete msg.serverTimestamp;
+delete msg.sourceTimestamp;
+delete msg._msgid;
+delete msg.endpoint; // Bunu da temizleyelim
+
+// 5. BASİT PAYLOAD FORMAT (ÇALIŞAN YÖNTEM!)
+msg.payload = {};
+msg.payload[paramName] = value;
+
+// Örn: msg.payload = { sicaklik: 52.98 }
+
+// 6. TAGS (msg.tags içinde olmalı, payload içinde değil!)
+msg.tags = {
+    machine: info.machine,
+    type: info.type,
+    endpoint: ep
+};
+
+return msg;
