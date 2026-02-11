@@ -1,0 +1,57 @@
+// 1) OPC UA payload normalize
+let value = msg.payload;
+
+if (value && typeof value === "object" && value.value !== undefined) {
+    value = value.value;
+}
+
+if (typeof value === "boolean") {
+    value = value ? 1 : 0;
+}
+
+// 2) Global context'ten metadata al
+const config = global.get("systemConfig");
+const ep = msg.endpoint;
+const nid = msg.topic;
+
+if (!config || !config[ep] || !config[ep][nid]) {
+    node.warn("Tanımsız veri: " + ep + " / " + nid);
+    return null;
+}
+
+const info = config[ep][nid];
+
+// 3) Parametre adını temizle
+let paramName = (info.field || "unknown")
+    .toLowerCase()
+    .replace(/ı/g,"i")
+    .replace(/ğ/g,"g")
+    .replace(/ü/g,"u")
+    .replace(/ş/g,"s")
+    .replace(/ö/g,"o")
+    .replace(/ç/g,"c")
+    .replace(/\s+/g,"_");
+
+// 4) TEMİZLİK - InfluxDB kafasını karıştıran metadata'ları sil
+delete msg.topic;
+delete msg.endpoint;
+delete msg.statusCode;
+delete msg.serverTimestamp;
+delete msg.sourceTimestamp;
+delete msg._msgid;
+
+// 5) ✅ DOĞRU FORMAT - Basit obje (array değil!)
+msg.payload = {
+    value: value  // ← TEK FIELD
+};
+
+msg.tags = {
+    machine_id: String(info.machine_id),
+    machine_name: info.machine,
+    parameter_id: String(info.parameter_id),
+    parameter_name: paramName,  // ← Orijinal isim (Türkçe karakterlerle)
+    unit: info.unit || "",
+    type: info.type
+};
+
+return msg;
