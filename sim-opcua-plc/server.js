@@ -1,123 +1,97 @@
-/* * Basit OPC UA Simülatörü 
- * Amaç: Node-RED'in okuması için sahte sensör verisi üretmek.
- */
-
+/* eslint-disable no-console */
 const opcua = require("node-opcua");
-const chalk = require("chalk"); // Konsol renkleri için
 
-const port = 4840;
+const PORT = 4840; 
+const MACHINE_TYPE = process.env.MACHINE_TYPE || "GENERIC"; 
+const MACHINE_ID = process.env.MACHINE_ID || "001";
 
-async function main() {
-    try {
-        // 1. Server Oluşturma
-        const server = new opcua.OPCUAServer({
-            port: port,
-            resourcePath: "/UA/Simulation",
-            buildInfo: {
-                productName: "SimulatedPLC",
-                buildNumber: "1",
-                buildDate: new Date()
-            }
-        });
+const PROFILES = {
+  CNC: { tempBase: 60, tempVariance: 15, pressureBase: 5, pressureVariance: 1, speedBase: 1200, speedVariance: 200 },
+  PRESS: { tempBase: 40, tempVariance: 5, pressureBase: 150, pressureVariance: 40, speedBase: 10, speedVariance: 2 },
+  ROBOT: { tempBase: 35, tempVariance: 10, pressureBase: 0, pressureVariance: 0, speedBase: 50, speedVariance: 50 }
+};
 
-        await server.initialize();
-        console.log(chalk.yellow("OPC UA Server başlatılıyor..."));
+const profile = PROFILES[MACHINE_TYPE] || PROFILES.CNC;
 
-        const addressSpace = server.engine.addressSpace;
-        const namespace = addressSpace.getOwnNamespace();
-
-        // 2. Cihaz Tanımlama (Örn: Bir CNC Makinesi)
-        const device = namespace.addObject({
-            organizedBy: addressSpace.rootFolder.objects,
-            browseName: "Machine_01"
-        });
-
-        // 3. Değişkenleri Tanımlama (Simüle edilecek veriler)
-
-        // Değişken 1: Sıcaklık (Temperature)
-        let temperature = 20.0;
-
-        // Değişkeni writable + settable yap
-        const tempNode = namespace.addVariable({
-            componentOf: device,
-            browseName: "Temperature",
-            dataType: "Double",
-            value: new opcua.Variant({
-                dataType: opcua.DataType.Double,
-                value: temperature
-            })
-        });
-
-        // ⬇️ KRİTİK KISIM ⬇️
-        // Server tarafında periyodik olarak değeri GÜNCELLE
-        setInterval(() => {
-            const change = (Math.random() - 0.5) * 2.0;
-            temperature += change;
-
-            if (temperature < 15) temperature = 15;
-            if (temperature > 100) temperature = 100;
-
-            tempNode.setValueFromSource(
-                new opcua.Variant({
-                    dataType: opcua.DataType.Double,
-                    value: temperature
-                }),
-                opcua.StatusCodes.Good
-            );
-
-        }, 1000); // 1 saniyede bir değişim
-
-
-        // !!! İŞTE SİHİRLİ SATIR !!!
-        console.log(chalk.magenta("--------------------------------------------------"));
-        console.log(chalk.magenta("Gizli NodeID Bulundu: ") + chalk.yellow(tempNode.nodeId.toString()));
-        console.log(chalk.magenta("--------------------------------------------------"));
-
-        // Değişken 2: Titreşim (Vibration)
-        let angle = 0;
-        const vibrationNode = namespace.addVariable({
-            componentOf: device,
-            browseName: "Vibration",
-            dataType: "Double",
-            value: {
-                get: function () {
-                    angle += 0.1;
-                    const vibration = 2.0 + Math.sin(angle) * 1.5;
-                    return new opcua.Variant({
-                        dataType: opcua.DataType.Double,
-                        value: vibration
-                    });
-                }
-            }
-        });
-        
-        console.log(
-          "Vibration NodeID:",
-          vibrationNode.nodeId.toString()
-        );
-        
-
-        // Değişken 3: Makine Durumu (IsActive) - Boolean
-        namespace.addVariable({
-            componentOf: device,
-            browseName: "IsActive",
-            dataType: "Boolean",
-            value: {
-                get: function () {
-                    return new opcua.Variant({ dataType: opcua.DataType.Boolean, value: true });
-                }
-            }
-        });
-
-        // 4. Server'ı Başlat
-        await server.start();
-        console.log(chalk.green(`Server başlatıldı!`));
-        console.log(`Endpoint: ${chalk.cyan(server.getEndpointUrl())}`);
-        console.log("Ctrl+C ile durdurabilirsiniz.");
-
-    } catch (err) {
-        console.log(chalk.red("Server başlatılamadı:"), err);
-    }
+function generateValue(base, variance) {
+  if (variance === 0) return base;
+  const factor = (Math.random() - 0.5) * 2; 
+  return base + (factor * variance);
 }
 
-main();
+(async () => {
+  try {
+    const server = new opcua.OPCUAServer({
+      port: PORT,
+      resourcePath: "/UA/Machine",
+      buildInfo: {
+        productName: `Simulated ${MACHINE_TYPE}`,
+        buildNumber: "1",
+        buildDate: new Date(),
+      },
+    });
+
+    await server.initialize();
+    const addressSpace = server.engine.addressSpace;
+    
+    // DÜZELTME: Kendi namespace'ini oluşturmak yerine (ns=2),
+    // Mevcut olan Namespace 1'i (Sunucu Alanı) alıyoruz.
+    const namespace = addressSpace.getNamespace(1);
+
+    const device = namespace.addObject({
+      organizedBy: addressSpace.rootFolder.objects,
+      browseName: `${MACHINE_TYPE}_${MACHINE_ID}`,
+    });
+
+    // --- 1. SICAKLIK (Temperature) [ns=1;i=1001] ---
+    let tempVal = profile.tempBase;
+    namespace.addVariable({
+      componentOf: device,
+      nodeId: "ns=1;i=1001", // BURASI ARTIK 1
+      browseName: "Temperature",
+      dataType: "Double",
+      value: {
+        get: () => {
+          tempVal += (Math.random() - 0.5) * 2;
+          return new opcua.Variant({ dataType: opcua.DataType.Double, value: parseFloat(tempVal.toFixed(1)) });
+        }
+      }
+    });
+
+    // --- 2. BASINÇ (Pressure) [ns=1;i=1002] ---
+    namespace.addVariable({
+      componentOf: device,
+      nodeId: "ns=1;i=1002", // BURASI ARTIK 1
+      browseName: "Pressure",
+      dataType: "Double",
+      value: {
+        get: () => {
+          const val = generateValue(profile.pressureBase, profile.pressureVariance);
+          return new opcua.Variant({ dataType: opcua.DataType.Double, value: parseFloat(val.toFixed(1)) });
+        }
+      }
+    });
+
+    // --- 3. HIZ (Speed) [ns=1;i=1003] ---
+    namespace.addVariable({
+      componentOf: device,
+      nodeId: "ns=1;i=1003", // BURASI ARTIK 1
+      browseName: "Speed",
+      dataType: "Int32",
+      value: {
+        get: () => {
+          let val = generateValue(profile.speedBase, profile.speedVariance);
+          if(MACHINE_TYPE === 'ROBOT' && Math.random() > 0.8) val = 0;
+          return new opcua.Variant({ dataType: opcua.DataType.Int32, value: Math.round(val) });
+        }
+      }
+    });
+
+    await server.start();
+    console.log(`[${MACHINE_TYPE}] (ns=1) Simülasyonu Başladı! Port: ${PORT}`);
+    console.log(`Endpoint: opc.tcp://0.0.0.0:${PORT}/UA/Machine`);
+
+  } catch (err) {
+    console.log("Sunucu hatası:", err);
+  }
+})();

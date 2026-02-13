@@ -3,7 +3,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { MachineTable } from '@/components/dashboard/MachineTable';
 import { MachineSheet } from '@/components/dashboard/MachineSheet';
-import { Machine, Parameter } from '@/types';
+import { Machine } from '@/types';
 import { Server, Activity, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -18,27 +18,24 @@ const Index = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      // Paralel olarak hem makineleri hem parametreleri çek
-      const [machinesRes, paramsRes] = await Promise.all([
-        fetch('/api/machines'),
-        fetch('/api/parameters')
-      ]);
+      // Sadece /api/machines çağırıyoruz. Çünkü parametreler içinde geliyor!
+      const res = await fetch('/api/machines');
+      const data = await res.json();
 
-      const machinesData = await machinesRes.json();
-      const paramsData = await paramsRes.json();
-
-      // Backend'den gelen veriyi Frontend yapısına (iç içe) dönüştür
-      // Not: SQLite ID'leri number döner, frontend string bekler. toString() yapıyoruz.
-      const mergedData: Machine[] = machinesData.map((m: any) => ({
+      // Backend'den gelen veriyi Frontend tiplerine (String ID) uyduruyoruz
+      const formattedData: Machine[] = data.map((m: any) => ({
         ...m,
-        id: m.id.toString(),
-        status: 'offline', // Şimdilik varsayılan offline, ileride Node-RED'den alırız
-        parameters: paramsData
-          .filter((p: any) => p.machine_id === m.id)
-          .map((p: any) => ({ ...p, id: p.id.toString(), machine_id: p.machine_id.toString() }))
+        id: m.id.toString(), // SQLite number döner, biz string kullanıyoruz
+        status: m.status || 'offline', 
+        parameters: m.parameters.map((p: any) => ({
+          ...p,
+          id: p.id.toString(),
+          machine_id: p.machine_id.toString(),
+          // Threshold null gelebilir, frontend bunu handle eder
+        }))
       }));
 
-      setMachines(mergedData);
+      setMachines(formattedData);
     } catch (error) {
       console.error('Veri çekme hatası:', error);
       toast.error('Veriler yüklenirken hata oluştu');
@@ -51,60 +48,27 @@ const Index = () => {
     fetchData();
   }, []);
 
-  // --- 2. MAKİNE KAYDETME / GÜNCELLEME (CREATE / UPDATE) ---
+  // --- 2. MAKİNE KAYDETME / GÜNCELLEME (TEK SEFERDE) ---
   const handleSaveMachine = async (machineData: Machine) => {
     try {
-      const isEdit = !!selectedMachine;
-      let machineId = machineData.id;
+      const isEdit = !!machineData.id; // ID varsa düzenlemedir
+      
+      // Tek bir istek atıyoruz. Backend her şeyi (parametreler, silme, ekleme) hallediyor.
+      const method = isEdit ? 'PUT' : 'POST';
+      
+      console.log("📤 API'ye Giden Veri:", machineData);
 
-      // A) Makineyi Kaydet
-      if (isEdit) {
-        // Güncelleme (PUT)
-        await fetch('/api/machines', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: machineData.id,
-            name: machineData.name,
-            type: machineData.type,
-            endpoint: machineData.endpoint
-          }),
-        });
-        
-        // Düzenleme modunda eski parametreleri temizle (Basit yöntem)
-        await fetch(`/api/parameters?machine_id=${machineData.id}`, { method: 'DELETE' });
+      const res = await fetch('/api/machines', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...machineData,
+          // ID'yi number'a çevirip gönderelim (gerçi backend string de alsa sqlite anlar ama garanti olsun)
+          id: machineData.id ? Number(machineData.id) : undefined
+        }),
+      });
 
-      } else {
-        // Yeni Kayıt (POST)
-        const res = await fetch('/api/machines', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: machineData.name,
-            type: machineData.type,
-            endpoint: machineData.endpoint
-          }),
-        });
-        const savedMachine = await res.json();
-        machineId = savedMachine.id; // DB'den gelen gerçek ID
-      }
-
-      // B) Parametreleri Kaydet (Döngü ile tek tek ekle)
-      if (machineData.parameters && machineData.parameters.length > 0) {
-        for (const param of machineData.parameters) {
-          await fetch('/api/parameters', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              machine_id: machineId,
-              node_id: param.node_id,
-              name: param.name,
-              data_type: param.data_type,
-              unit: param.unit
-            }),
-          });
-        }
-      }
+      if (!res.ok) throw new Error('API Hatası');
 
       toast.success(isEdit ? 'Makine güncellendi' : 'Makine başarıyla eklendi');
       fetchData(); // Listeyi yenile
@@ -144,7 +108,7 @@ const Index = () => {
   // --- KPI Hesaplamaları ---
   const totalMachines = machines.length;
   const totalOnline = machines.filter(m => m.status === 'online').length;
-  const totalParams = machines.reduce((acc, curr) => acc + curr.parameters.length, 0);
+  const totalParams = machines.reduce((acc, curr) => acc + (curr.parameters?.length || 0), 0);
 
   return (
     <DashboardLayout>

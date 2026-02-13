@@ -10,6 +10,9 @@ services:
       - ./sim-opcua-plc:/app
       - /app/node_modules
     command: sh -c "npm install && node server.js"
+    environment:
+      - MACHINE_TYPE=CNC
+      - MACHINE_ID=001
     ports:
       - "4840:4840"
     networks:
@@ -24,6 +27,9 @@ services:
       - ./sim-opcua-plc:/app
       - /app/node_modules
     command: sh -c "npm install && node server.js"
+    environment:
+      - MACHINE_TYPE=PRESS
+      - MACHINE_ID=002
     ports:
       - "4841:4840"
     networks:
@@ -37,52 +43,16 @@ services:
       - ./sim-opcua-plc:/app
       - /app/node_modules
     command: sh -c "npm install && node server.js"
+    environment:
+      - MACHINE_TYPE=ROBOT
+      - MACHINE_ID=003
     ports:
       - "4842:4840"
     networks:
       - iiot-net
 
-  sim-opcua-plc4:
-    image: node:20-alpine
-    container_name: sim-opcua-plc4
-    working_dir: /app
-    volumes:
-      - ./sim-opcua-plc:/app
-      - /app/node_modules
-    command: sh -c "npm install && node server.js"
-    ports:
-      - "4843:4840"
-    networks:
-      - iiot-net
-
-  sim-opcua-plc5:
-    image: node:20-alpine
-    container_name: sim-opcua-plc5
-    working_dir: /app
-    volumes:
-      - ./sim-opcua-plc:/app
-      - /app/node_modules
-    command: sh -c "npm install && node server.js"
-    ports:
-      - "4844:4840"
-    networks:
-      - iiot-net
-
-  sim-opcua-plc6:
-    image: node:20-alpine
-    container_name: sim-opcua-plc6
-    working_dir: /app
-    volumes:
-      - ./sim-opcua-plc:/app
-      - /app/node_modules
-    command: sh -c "npm install && node server.js"
-    ports:
-      - "4845:4840"
-    networks:
-      - iiot-net     
+   
 # EDGE / INTEGRATION
-
-
   edge-node-red:
     build: ./node-red
     container_name: edge-node-red
@@ -119,14 +89,26 @@ services:
       - iiot-net
 
   # 4. DASHBOARD (Grafana)
+# 4. DASHBOARD (Grafana)
   viz-grafana:
     image: grafana/grafana:10.2.3
     container_name: viz-grafana
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
+      - cfg-data:/var/lib/grafana/sqlite_shared
+      
+      # 👇 YENİ SATIR: Elle indirdiğimiz plugin klasörünü bağlıyoruz
+      - ./grafana/plugins:/var/lib/grafana/plugins
+      
     ports:
       - "3001:3000"
+    environment:
+      # 👇 DEĞİŞİKLİK: İndirme komutunu SİLDİK (GF_INSTALL_PLUGINS yok)
+      
+      # 👇 YENİ: Bu plugin imzasız olduğu için izin veriyoruz
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=frser-sqlite-datasource
+      
     depends_on:
       - data-influxdb
     networks:

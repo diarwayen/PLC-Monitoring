@@ -14,15 +14,18 @@ export default async function handler(req, res) {
     }
   } 
   else if (req.method === 'POST') {
-    const { machine_id, node_id, name, data_type, unit } = req.body;
+    const { machine_id, node_id, name, data_type, unit, threshold } = req.body;
+    
+    // threshold undefined gelirse null yap
+    const safeThreshold = threshold === undefined || threshold === '' ? null : threshold;
+
     const result = await db.run(
-      'INSERT INTO parameters (machine_id, node_id, name, data_type, unit) VALUES (?, ?, ?, ?, ?)',
-      [machine_id, node_id, name, data_type, unit]
+      'INSERT INTO parameters (machine_id, node_id, name, data_type, unit, threshold) VALUES (?, ?, ?, ?, ?, ?)',
+      [machine_id, node_id, name, data_type, unit, safeThreshold]
     );
     res.status(201).json({ id: result.lastID });
   } 
   else if (req.method === 'DELETE') { 
-    // Makine güncellenirken toplu temizlik için kullanılır
     const { machine_id } = req.query;
     if(machine_id) {
        await db.run('DELETE FROM parameters WHERE machine_id = ?', machine_id);

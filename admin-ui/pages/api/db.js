@@ -7,7 +7,7 @@ export async function openDb() {
     driver: sqlite3.Database,
   });
 
-  // Tabloları Otomatik Oluştur (Yoksa)
+  // Tabloları Otomatik Oluştur
   await db.exec(`
     CREATE TABLE IF NOT EXISTS machines (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,6 +23,7 @@ export async function openDb() {
       name TEXT,
       data_type TEXT,
       unit TEXT,
+      threshold REAL,  -- Eşik Değer Sütunu
       FOREIGN KEY(machine_id) REFERENCES machines(id) ON DELETE CASCADE
     );
   `);
